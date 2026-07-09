@@ -17,7 +17,7 @@ export class CartService {
   constructor(private readonly prisma: PrismaService) {}
 
   private toCartModel(cart: CartWithItems) {
-    const items = cart.items.map((item) => ({
+    const items = cart.items.map((item: CartWithItems['items'][number]) => ({
       id: item.id,
       quantity: item.quantity,
       productId: item.productId,
@@ -34,8 +34,8 @@ export class CartService {
     return {
       id: cart.id,
       items,
-      itemCount: items.reduce((sum, i) => sum + i.quantity, 0),
-      subtotal: items.reduce((sum, i) => sum + i.lineTotal, 0),
+      itemCount: items.reduce((sum: number, i: (typeof items)[number]) => sum + i.quantity, 0),
+      subtotal: items.reduce((sum: number, i: (typeof items)[number]) => sum + i.lineTotal, 0),
     };
   }
 
