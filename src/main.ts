@@ -1,7 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
 import { AppModule } from './app.module';
 import { AppException } from './common/errors/app.exception';
 import { ErrorCode } from './common/errors/error-codes';
@@ -34,7 +33,6 @@ async function bootstrap() {
       },
     }),
   );
-  app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

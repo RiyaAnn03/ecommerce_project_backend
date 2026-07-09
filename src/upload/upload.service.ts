@@ -1,7 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { existsSync, mkdirSync } from 'fs';
-import { extname, join } from 'path';
-import { randomBytes } from 'crypto';
+import { v2 as cloudinary } from 'cloudinary';
 import { AppException } from '../common/errors/app.exception';
 import { ErrorCode } from '../common/errors/error-codes';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,14 +9,22 @@ const MAX_SIZE = 5 * 1024 * 1024;
 
 @Injectable()
 export class UploadService {
-  private readonly uploadRoot = join(process.cwd(), 'uploads');
+  constructor(private readonly prisma: PrismaService) {
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+    if (!cloudName || !apiKey || !apiSecret) {
+      throw new Error(
+        'Cloudinary env vars are missing. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET.',
+      );
+    }
 
-  constructor(private readonly prisma: PrismaService) {}
-
-  ensureDir(folder: string) {
-    const dir = join(this.uploadRoot, folder);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    return dir;
+    cloudinary.config({
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
+      secure: true,
+    });
   }
 
   validateFile(file?: Express.Multer.File) {
@@ -37,14 +43,43 @@ export class UploadService {
     }
   }
 
-  buildFilename(originalName: string): string {
-    const ext = extname(originalName).toLowerCase() || '.jpg';
-    return `${Date.now()}-${randomBytes(6).toString('hex')}${ext}`;
-  }
+  private async uploadToCloudinary(
+    folder: string,
+    file: Express.Multer.File,
+  ): Promise<{ url: string; publicId: string }> {
+    // With memoryStorage, file.buffer is available.
+    if (!file.buffer?.length) {
+      throw new AppException(400, ErrorCode.BAD_REQUEST, 'Invalid file upload');
+    }
 
-  buildPublicUrl(folder: string, filename: string): string {
-    const base = process.env.APP_URL || `http://localhost:${process.env.PORT ?? 3000}`;
-    return `${base}/uploads/${folder}/${filename}`;
+    const cloudFolder = process.env.CLOUDINARY_FOLDER?.trim() || 'ecommerce';
+    const resourceType = 'image' as const;
+
+    const result = await new Promise<{
+      secure_url: string;
+      public_id: string;
+    }>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: `${cloudFolder}/${folder}`,
+          resource_type: resourceType,
+        },
+        (error, uploadResult) => {
+          if (error || !uploadResult) return reject(error ?? new Error('Upload failed'));
+          resolve(uploadResult as { secure_url: string; public_id: string });
+        },
+      );
+
+      stream.end(file.buffer);
+    }).catch((e: unknown) => {
+      throw new AppException(
+        400,
+        ErrorCode.UPLOAD_FAILED,
+        e instanceof Error ? e.message : 'Upload failed',
+      );
+    });
+
+    return { url: result.secure_url, publicId: result.public_id };
   }
 
   async attachProductImage(productId: string, file: Express.Multer.File) {
@@ -55,7 +90,7 @@ export class UploadService {
       throw new AppException(404, ErrorCode.NOT_FOUND, 'Product not found');
     }
 
-    const url = this.buildPublicUrl('products', file.filename);
+    const { url, publicId } = await this.uploadToCloudinary('products', file);
     const updated = await this.prisma.product.update({
       where: { id: productId },
       data: { images: { push: url } },
@@ -67,7 +102,7 @@ export class UploadService {
       message: 'Product image uploaded',
       productId,
       url,
-      filename: file.filename,
+      publicId,
       images: updated.images,
     };
   }
@@ -80,7 +115,7 @@ export class UploadService {
       throw new AppException(404, ErrorCode.NOT_FOUND, 'Category not found');
     }
 
-    const url = this.buildPublicUrl('categories', file.filename);
+    const { url, publicId } = await this.uploadToCloudinary('categories', file);
     const updated = await this.prisma.category.update({
       where: { id: categoryId },
       data: { imageUrl: url },
@@ -91,7 +126,7 @@ export class UploadService {
       message: 'Category image uploaded',
       categoryId,
       url,
-      filename: file.filename,
+      publicId,
       imageUrl: updated.imageUrl,
     };
   }

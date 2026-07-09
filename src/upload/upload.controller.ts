@@ -10,31 +10,12 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { join } from 'path';
+import { memoryStorage } from 'multer';
 import { AdminAuthGuard } from '../common/guards/admin-auth.guard';
 import { HttpExceptionFilter } from '../common/filters/http-exception.filter';
 import { UploadService } from './upload.service';
 
-const productStorage = diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, join(process.cwd(), 'uploads', 'products'));
-  },
-  filename: (_req, file, cb) => {
-    const ext = file.originalname.match(/\.[a-zA-Z0-9]+$/)?.[0] ?? '.jpg';
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
-  },
-});
-
-const categoryStorage = diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, join(process.cwd(), 'uploads', 'categories'));
-  },
-  filename: (_req, file, cb) => {
-    const ext = file.originalname.match(/\.[a-zA-Z0-9]+$/)?.[0] ?? '.jpg';
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
-  },
-});
+const uploadMemoryStorage = memoryStorage();
 
 @Controller('api/uploads')
 @UseFilters(HttpExceptionFilter)
@@ -45,7 +26,7 @@ export class UploadController {
   @Post('products/:productId/images')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: productStorage,
+      storage: uploadMemoryStorage,
       limits: { fileSize: 5 * 1024 * 1024 },
     }),
   )
@@ -67,7 +48,7 @@ export class UploadController {
   @Post('categories/:categoryId/image')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: categoryStorage,
+      storage: uploadMemoryStorage,
       limits: { fileSize: 5 * 1024 * 1024 },
     }),
   )
