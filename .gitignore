@@ -1,0 +1,15 @@
+node_modules
+# Keep environment variables out of version control
+.env
+
+/dist
+/coverage
+/.temp
+/.tmp
+
+# Prisma client output (default)
+/prisma/generated
+
+# If you configured a custom output path
+/uploads
+

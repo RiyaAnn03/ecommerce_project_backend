@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Contact" ADD COLUMN "mobile" TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE "Contact" ALTER COLUMN "mobile" DROP DEFAULT;
