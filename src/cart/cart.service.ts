@@ -17,19 +17,21 @@ export class CartService {
   constructor(private readonly prisma: PrismaService) {}
 
   private toCartModel(cart: CartWithItems) {
-    const items = cart.items.map((item: CartWithItems['items'][number]) => ({
-      id: item.id,
-      quantity: item.quantity,
-      productId: item.productId,
-      product: {
-        ...item.product,
-        price: Number(item.product.price),
-        compareAtPrice: item.product.compareAtPrice
-          ? Number(item.product.compareAtPrice)
-          : null,
-      },
-      lineTotal: Number(item.product.price) * item.quantity,
-    }));
+    const items = cart.items
+      .filter((item) => item.product && item.product.deletedAt == null)
+      .map((item: CartWithItems['items'][number]) => ({
+        id: item.id,
+        quantity: item.quantity,
+        productId: item.productId,
+        product: {
+          ...item.product,
+          price: Number(item.product.price),
+          compareAtPrice: item.product.compareAtPrice
+            ? Number(item.product.compareAtPrice)
+            : null,
+        },
+        lineTotal: Number(item.product.price) * item.quantity,
+      }));
 
     return {
       id: cart.id,
@@ -64,8 +66,20 @@ export class CartService {
     return cart;
   }
 
+  /** Drop cart rows pointing at soft-deleted / missing products. */
+  private async purgeInvalidItems(cart: CartWithItems) {
+    const invalidIds = cart.items
+      .filter((item) => !item.product || item.product.deletedAt != null)
+      .map((item) => item.id);
+
+    if (!invalidIds.length) return cart;
+
+    await this.prisma.cartItem.deleteMany({ where: { id: { in: invalidIds } } });
+    return this.getOrCreateCart(cart.userId);
+  }
+
   async getCart(userId: string) {
-    const cart = await this.getOrCreateCart(userId);
+    const cart = await this.purgeInvalidItems(await this.getOrCreateCart(userId));
     return this.toCartModel(cart);
   }
 
@@ -74,23 +88,32 @@ export class CartService {
       throw new AppException(400, ErrorCode.BAD_REQUEST, 'Quantity must be at least 1');
     }
 
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+    });
     if (!product) throw new AppException(404, ErrorCode.NOT_FOUND, 'Product not found');
     if (product.stock < quantity) {
-      throw new AppException(400, ErrorCode.INSUFFICIENT_STOCK, 'Insufficient stock');
+      throw new AppException(
+        400,
+        ErrorCode.INSUFFICIENT_STOCK,
+        `Insufficient stock for ${product.name}. Available: ${product.stock}, requested: ${quantity}`,
+      );
     }
 
-    const cart = await this.getOrCreateCart(userId);
-    const existing = cart.items.find((i) => i.productId === productId);
+    const cart = await this.purgeInvalidItems(await this.getOrCreateCart(userId));
+    const existing = cart.items.find(
+      (i) => i.productId === productId && i.product.deletedAt == null,
+    );
 
     if (existing) {
       const newQty = existing.quantity + quantity;
-      if (product.stock < newQty) {
-        throw new AppException(400, ErrorCode.INSUFFICIENT_STOCK, 'Insufficient stock');
+      const nextQty = Math.min(newQty, product.stock);
+      if (nextQty === existing.quantity) {
+        return this.toCartModel(cart);
       }
       await this.prisma.cartItem.update({
         where: { id: existing.id },
-        data: { quantity: newQty },
+        data: { quantity: nextQty },
       });
     } else {
       await this.prisma.cartItem.create({
@@ -106,13 +129,23 @@ export class CartService {
       throw new AppException(400, ErrorCode.BAD_REQUEST, 'Quantity must be at least 1');
     }
 
-    const cart = await this.getOrCreateCart(userId);
-    const item = cart.items.find((i) => i.productId === productId);
+    const cart = await this.purgeInvalidItems(await this.getOrCreateCart(userId));
+    const item = cart.items.find((i) => i.productId === productId && i.product.deletedAt == null);
     if (!item) throw new AppException(404, ErrorCode.NOT_FOUND, 'Item not in cart');
 
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
-    if (!product || product.stock < quantity) {
-      throw new AppException(400, ErrorCode.INSUFFICIENT_STOCK, 'Insufficient stock');
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, deletedAt: null },
+    });
+    if (!product) {
+      await this.prisma.cartItem.delete({ where: { id: item.id } });
+      throw new AppException(404, ErrorCode.NOT_FOUND, 'Product not found');
+    }
+    if (product.stock < quantity) {
+      throw new AppException(
+        400,
+        ErrorCode.INSUFFICIENT_STOCK,
+        `Insufficient stock for ${product.name}. Available: ${product.stock}, requested: ${quantity}`,
+      );
     }
 
     await this.prisma.cartItem.update({

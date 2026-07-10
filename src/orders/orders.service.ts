@@ -87,11 +87,18 @@ export class OrdersService {
     }
 
     for (const item of cart.items) {
+      if (item.product.deletedAt) {
+        throw new AppException(
+          400,
+          ErrorCode.BAD_REQUEST,
+          `Product "${item.product.name}" is no longer available. Remove it from cart.`,
+        );
+      }
       if (item.product.stock < item.quantity) {
         throw new AppException(
           400,
           ErrorCode.INSUFFICIENT_STOCK,
-          `Insufficient stock for ${item.product.name}`,
+          `Insufficient stock for ${item.product.name}. Available: ${item.product.stock}, in cart: ${item.quantity}`,
         );
       }
     }
