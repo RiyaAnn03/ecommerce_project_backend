@@ -41,6 +41,7 @@ import { ContactsModule } from './contacts/contacts.module';
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       autoSchemaFile: true,
+      introspection: true,
       playground: false,
       csrfPrevention: false,
       debug: false,
