@@ -45,6 +45,28 @@ export class UploadController {
     return this.upload.removeProductImage(productId, imageUrl);
   }
 
+  @Post('products/:productId/videos')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: uploadMemoryStorage,
+      limits: { fileSize: 50 * 1024 * 1024 },
+    }),
+  )
+  uploadProductVideo(
+    @Param('productId') productId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.upload.attachProductVideo(productId, file);
+  }
+
+  @Delete('products/:productId/videos')
+  removeProductVideo(
+    @Param('productId') productId: string,
+    @Body('videoUrl') videoUrl: string,
+  ) {
+    return this.upload.removeProductVideo(productId, videoUrl);
+  }
+
   @Post('categories/:categoryId/image')
   @UseInterceptors(
     FileInterceptor('file', {

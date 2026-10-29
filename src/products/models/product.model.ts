@@ -25,6 +25,9 @@ export class ProductModel {
   @Field(() => [String])
   images!: string[];
 
+  @Field(() => [String], { nullable: true, defaultValue: [] })
+  videos?: string[];
+
   @Field(() => Int)
   stock!: number;
 

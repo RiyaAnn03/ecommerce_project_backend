@@ -57,6 +57,7 @@ model Product {
   price           Decimal        @db.Decimal(10, 2)
   compareAtPrice  Decimal?       @db.Decimal(10, 2)
   images          String[]
+  videos          String[]       @default([])
   stock           Int            @default(0)
   yarnType        String?
   skillLevel      SkillLevel?
@@ -170,6 +171,8 @@ model Order {
   deliveryMethod  DeliveryMethod
   paymentMethod   PaymentMethod
   paymentStatus   PaymentStatus  @default(PENDING)
+  razorpayOrderId   String?      @unique
+  razorpayPaymentId String?
   subtotal        Decimal        @db.Decimal(10, 2)
   deliveryFee     Decimal        @db.Decimal(10, 2)
   total           Decimal        @db.Decimal(10, 2)

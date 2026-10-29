@@ -6,7 +6,9 @@ import { AppException } from './common/errors/app.exception';
 import { ErrorCode } from './common/errors/error-codes';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
 
   // Allow frontend (React/Next/Vite) to call this API from another port/origin.
   app.enableCors({

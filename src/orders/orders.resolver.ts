@@ -7,6 +7,7 @@ import { GqlAuthGuard } from '../common/guards/gql-auth.guard';
 import { PlaceOrderInput } from './dto/place-order.input';
 import { UpdateOrderStatusInput } from './dto/update-order-status.input';
 import './enums/order.enums';
+import { PlaceOrderResultModel } from '../payments/models/razorpay-checkout.model';
 import { OrderListModel, OrderModel } from './models/order.model';
 import { OrdersService } from './orders.service';
 
@@ -15,11 +16,11 @@ export class OrdersResolver {
   constructor(private readonly orders: OrdersService) {}
 
   @UseGuards(GqlAuthGuard)
-  @Mutation(() => OrderModel)
+  @Mutation(() => PlaceOrderResultModel)
   placeOrder(
     @CurrentUserId() userId: string,
     @Args('input') input: PlaceOrderInput,
-  ): Promise<OrderModel> {
+  ): Promise<PlaceOrderResultModel> {
     return this.orders.placeOrder(userId, input);
   }
 

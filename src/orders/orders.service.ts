@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import {
   DeliveryMethod,
   OrderStatus,
@@ -9,6 +9,7 @@ import {
 import { AppException } from '../common/errors/app.exception';
 import { ErrorCode } from '../common/errors/error-codes';
 import { resolvePagination } from '../common/utils/pagination';
+import { PaymentsService } from '../payments/payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlaceOrderInput } from './dto/place-order.input';
 import { UpdateOrderStatusInput } from './dto/update-order-status.input';
@@ -27,9 +28,19 @@ const DELIVERY_FEES: Record<DeliveryMethod, number> = {
   PICKUP: 0,
 };
 
+const ONLINE_PAYMENT_METHODS: PaymentMethod[] = [
+  PaymentMethod.UPI,
+  PaymentMethod.CARD,
+  PaymentMethod.NET_BANKING,
+];
+
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => PaymentsService))
+    private readonly payments: PaymentsService,
+  ) {}
 
   private toOrderModel(order: OrderRecord) {
     return {
@@ -109,10 +120,8 @@ export class OrdersService {
     );
     const deliveryFee = DELIVERY_FEES[input.deliveryMethod];
     const total = subtotal + deliveryFee;
-    const paymentStatus =
-      input.paymentMethod === PaymentMethod.COD
-        ? PaymentStatus.PENDING
-        : PaymentStatus.PAID;
+    const isOnlinePayment = ONLINE_PAYMENT_METHODS.includes(input.paymentMethod);
+    const paymentStatus = PaymentStatus.PENDING;
 
     const order = await this.prisma.$transaction(async (tx) => {
       for (const item of cart.items) {
@@ -161,7 +170,14 @@ export class OrdersService {
       return created;
     });
 
-    return this.toOrderModel(order);
+    const orderModel = this.toOrderModel(order);
+
+    if (!isOnlinePayment) {
+      return { order: orderModel, razorpay: null };
+    }
+
+    const razorpay = await this.payments.createRazorpayOrderForOrder(order);
+    return { order: orderModel, razorpay };
   }
 
   async myOrders(userId: string, skip = 0, take = 10) {
@@ -236,6 +252,9 @@ export class OrdersService {
         data: {
           status: OrderStatus.CANCELLED,
           cancelledAt: new Date(),
+          ...(order.paymentStatus === PaymentStatus.PENDING && {
+            paymentStatus: PaymentStatus.FAILED,
+          }),
           statusHistory: {
             create: {
               status: OrderStatus.CANCELLED,

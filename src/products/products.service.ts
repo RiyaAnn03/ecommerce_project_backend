@@ -30,6 +30,7 @@ type ProductRecord = {
   price: Prisma.Decimal;
   compareAtPrice: Prisma.Decimal | null;
   images: string[];
+  videos: string[];
   stock: number;
   yarnType: string | null;
   skillLevel: SkillLevel | null;
@@ -236,6 +237,7 @@ export class ProductsService {
         price: input.price,
         compareAtPrice: input.compareAtPrice,
         images: [],
+        videos: [],
         stock: input.stock,
         yarnType: input.yarnType?.trim() || null,
         skillLevel: input.skillLevel,

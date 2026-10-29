@@ -20,8 +20,10 @@ import { UsersModule } from './users/users.module';
 import { UploadModule } from './upload/upload.module';
 import { AddressesModule } from './addresses/addresses.module';
 import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { ContactsModule } from './contacts/contacts.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -36,8 +38,10 @@ import { ContactsModule } from './contacts/contacts.module';
     UploadModule,
     AddressesModule,
     OrdersModule,
+    PaymentsModule,
     ReviewsModule,
     ContactsModule,
+    ChatModule,
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       autoSchemaFile: true,

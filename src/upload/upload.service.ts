@@ -4,8 +4,16 @@ import { AppException } from '../common/errors/app.exception';
 import { ErrorCode } from '../common/errors/error-codes';
 import { PrismaService } from '../prisma/prisma.service';
 
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
-const MAX_SIZE = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const ALLOWED_VIDEO_MIME = new Set([
+  'video/mp4',
+  'video/webm',
+  'video/quicktime', // .mov
+  'video/x-matroska', // .mkv
+]);
+
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50 MB
 
 @Injectable()
 export class UploadService {
@@ -27,33 +35,48 @@ export class UploadService {
     });
   }
 
-  validateFile(file?: Express.Multer.File) {
+  validateImageFile(file?: Express.Multer.File) {
     if (!file) {
       throw new AppException(400, ErrorCode.BAD_REQUEST, 'No file uploaded');
     }
-    if (!ALLOWED_MIME.has(file.mimetype)) {
+    if (!ALLOWED_IMAGE_MIME.has(file.mimetype)) {
       throw new AppException(
         400,
         ErrorCode.BAD_REQUEST,
         'Only JPEG, PNG, WebP, and GIF images are allowed',
       );
     }
-    if (file.size > MAX_SIZE) {
+    if (file.size > MAX_IMAGE_SIZE) {
       throw new AppException(400, ErrorCode.BAD_REQUEST, 'Image must be 5 MB or smaller');
+    }
+  }
+
+  validateVideoFile(file?: Express.Multer.File) {
+    if (!file) {
+      throw new AppException(400, ErrorCode.BAD_REQUEST, 'No file uploaded');
+    }
+    if (!ALLOWED_VIDEO_MIME.has(file.mimetype)) {
+      throw new AppException(
+        400,
+        ErrorCode.BAD_REQUEST,
+        'Only MP4, WebM, MOV, and MKV videos are allowed',
+      );
+    }
+    if (file.size > MAX_VIDEO_SIZE) {
+      throw new AppException(400, ErrorCode.BAD_REQUEST, 'Video must be 50 MB or smaller');
     }
   }
 
   private async uploadToCloudinary(
     folder: string,
     file: Express.Multer.File,
+    resourceType: 'image' | 'video' = 'image',
   ): Promise<{ url: string; publicId: string }> {
-    // With memoryStorage, file.buffer is available.
     if (!file.buffer?.length) {
       throw new AppException(400, ErrorCode.BAD_REQUEST, 'Invalid file upload');
     }
 
     const cloudFolder = process.env.CLOUDINARY_FOLDER?.trim() || 'ecommerce';
-    const resourceType = 'image' as const;
 
     const result = await new Promise<{
       secure_url: string;
@@ -83,14 +106,14 @@ export class UploadService {
   }
 
   async attachProductImage(productId: string, file: Express.Multer.File) {
-    this.validateFile(file);
+    this.validateImageFile(file);
 
     const product = await this.prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
       throw new AppException(404, ErrorCode.NOT_FOUND, 'Product not found');
     }
 
-    const { url, publicId } = await this.uploadToCloudinary('products', file);
+    const { url, publicId } = await this.uploadToCloudinary('products', file, 'image');
     const updated = await this.prisma.product.update({
       where: { id: productId },
       data: { images: { push: url } },
@@ -107,15 +130,39 @@ export class UploadService {
     };
   }
 
+  async attachProductVideo(productId: string, file: Express.Multer.File) {
+    this.validateVideoFile(file);
+
+    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    if (!product) {
+      throw new AppException(404, ErrorCode.NOT_FOUND, 'Product not found');
+    }
+
+    const { url, publicId } = await this.uploadToCloudinary('products/videos', file, 'video');
+    const updated = await this.prisma.product.update({
+      where: { id: productId },
+      data: { videos: { push: url } },
+    });
+
+    return {
+      statusCode: 201,
+      message: 'Product video uploaded',
+      productId,
+      url,
+      publicId,
+      videos: updated.videos,
+    };
+  }
+
   async attachCategoryImage(categoryId: string, file: Express.Multer.File) {
-    this.validateFile(file);
+    this.validateImageFile(file);
 
     const category = await this.prisma.category.findUnique({ where: { id: categoryId } });
     if (!category) {
       throw new AppException(404, ErrorCode.NOT_FOUND, 'Category not found');
     }
 
-    const { url, publicId } = await this.uploadToCloudinary('categories', file);
+    const { url, publicId } = await this.uploadToCloudinary('categories', file, 'image');
     const updated = await this.prisma.category.update({
       where: { id: categoryId },
       data: { imageUrl: url },
@@ -152,6 +199,30 @@ export class UploadService {
       message: 'Product image removed',
       productId,
       images: updated.images,
+    };
+  }
+
+  async removeProductVideo(productId: string, videoUrl: string) {
+    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    if (!product) {
+      throw new AppException(404, ErrorCode.NOT_FOUND, 'Product not found');
+    }
+
+    const videos = product.videos.filter((v) => v !== videoUrl);
+    if (videos.length === product.videos.length) {
+      throw new AppException(404, ErrorCode.NOT_FOUND, 'Video not found on product');
+    }
+
+    const updated = await this.prisma.product.update({
+      where: { id: productId },
+      data: { videos },
+    });
+
+    return {
+      statusCode: 200,
+      message: 'Product video removed',
+      productId,
+      videos: updated.videos,
     };
   }
 }
